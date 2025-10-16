@@ -1,189 +1,330 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { storyService } from '../services/storyService';
+import React, { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import { useForm } from 'react-hook-form'
+import { useMutation } from 'react-query'
+import { 
+  BookOpen, 
+  Image, 
+  Save, 
+  ArrowLeft,
+  Upload,
+  X
+} from 'lucide-react'
+import { storiesAPI } from '../services/api'
+import LoadingSpinner from '../components/UI/LoadingSpinner'
+import toast from 'react-hot-toast'
 
 const StoryCreate = () => {
-    const [formData, setFormData] = useState({
-        title: '',
-        description: '',
-        content: '',
-        cover_image: null,
-    });
-    const [preview, setPreview] = useState(null);
-    const [error, setError] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const navigate = useNavigate();
+  const [coverImage, setCoverImage] = useState(null)
+  const [coverPreview, setCoverPreview] = useState(null)
+  const [isLoading, setIsLoading] = useState(false)
+  
+  const navigate = useNavigate()
 
-    const handleChange = (e) => {
-        const { name, value, files } = e.target;
-        if (name === 'cover_image' && files?.length) {
-            setFormData(prev => ({
-                ...prev,
-                cover_image: files[0]
-            }));
-            setPreview(URL.createObjectURL(files[0]));
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    setError
+  } = useForm()
+
+  const createMutation = useMutation(
+    (data) => storiesAPI.createStory(data),
+    {
+      onSuccess: (story) => {
+        toast.success('Story created successfully!')
+        navigate(`/stories/${story.slug}`)
+      },
+      onError: (error) => {
+        const errorData = error.response?.data
+        if (errorData) {
+          Object.keys(errorData).forEach(field => {
+            if (errorData[field] && Array.isArray(errorData[field])) {
+              setError(field, { message: errorData[field][0] })
+            }
+          })
         } else {
-            setFormData(prev => ({
-                ...prev,
-                [name]: value
-            }));
+          toast.error('Failed to create story')
         }
-        setError('');
-    };
+      }
+    }
+  )
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setIsLoading(true);
-        setError('');
+  const handleImageChange = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        toast.error('Image size should be less than 5MB')
+        return
+      }
+      
+      setCoverImage(file)
+      
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        setCoverPreview(e.target.result)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
 
-        try {
-            const response = await storyService.createStory(formData);
-            navigate(`/stories/${response.slug}`);
-        } catch (err) {
-            setError(err.message || 'Failed to create story. Please try again.');
-            setIsLoading(false);
-        }
-    };
+  const removeCoverImage = () => {
+    setCoverImage(null)
+    setCoverPreview(null)
+  }
 
-    return (
-        <div className="container mx-auto px-4 py-8">
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="max-w-4xl mx-auto"
+  const onSubmit = async (data) => {
+    setIsLoading(true)
+    
+    try {
+      const formData = new FormData()
+      formData.append('title', data.title)
+      formData.append('description', data.description)
+      formData.append('content', data.content)
+      formData.append('category', data.category)
+      
+      if (coverImage) {
+        formData.append('cover_image', coverImage)
+      }
+
+      await createMutation.mutateAsync(formData)
+    } catch (error) {
+      // Error handled by mutation
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const categories = [
+    'Fantasy',
+    'Sci-Fi',
+    'Mystery',
+    'Romance',
+    'Adventure',
+    'Horror',
+    'Drama',
+    'Comedy',
+    'Thriller',
+    'Historical'
+  ]
+
+  return (
+    <div className="min-h-screen py-8 px-4">
+      <div className="container mx-auto max-w-4xl">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={() => navigate(-1)}
+              className="text-gray-400 hover:text-white transition-colors"
             >
-                <h1 className="text-3xl font-bold mb-8 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                    Create Your Story
-                </h1>
-
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    {/* Cover Image Upload */}
-                    <div className="relative">
-                        <div className="aspect-[21/9] rounded-xl overflow-hidden bg-gray-800 border-2 border-dashed border-gray-700 flex items-center justify-center group">
-                            {preview ? (
-                                <img
-                                    src={preview}
-                                    alt="Cover preview"
-                                    className="w-full h-full object-cover"
-                                />
-                            ) : (
-                                <div className="text-center p-8">
-                                    <svg
-                                        className="mx-auto h-12 w-12 text-gray-400"
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        stroke="currentColor"
-                                    >
-                                        <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            strokeWidth={2}
-                                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                                        />
-                                    </svg>
-                                    <p className="mt-4 text-sm text-gray-400">
-                                        Click or drag to upload a cover image
-                                    </p>
-                                </div>
-                            )}
-                            <input
-                                type="file"
-                                name="cover_image"
-                                accept="image/*"
-                                onChange={handleChange}
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                            />
-                        </div>
-                    </div>
-
-                    {/* Title */}
-                    <div>
-                        <label htmlFor="title" className="block text-sm font-medium text-gray-400 mb-2">
-                            Title
-                        </label>
-                        <input
-                            type="text"
-                            id="title"
-                            name="title"
-                            required
-                            value={formData.title}
-                            onChange={handleChange}
-                            className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-                            placeholder="Enter your story title"
-                        />
-                    </div>
-
-                    {/* Description */}
-                    <div>
-                        <label htmlFor="description" className="block text-sm font-medium text-gray-400 mb-2">
-                            Description
-                        </label>
-                        <textarea
-                            id="description"
-                            name="description"
-                            required
-                            value={formData.description}
-                            onChange={handleChange}
-                            rows={3}
-                            className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-                            placeholder="Write a brief description of your story"
-                        />
-                    </div>
-
-                    {/* Content */}
-                    <div>
-                        <label htmlFor="content" className="block text-sm font-medium text-gray-400 mb-2">
-                            Story Content
-                        </label>
-                        <textarea
-                            id="content"
-                            name="content"
-                            required
-                            value={formData.content}
-                            onChange={handleChange}
-                            rows={12}
-                            className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-                            placeholder="Write your story here..."
-                        />
-                    </div>
-
-                    {error && (
-                        <motion.div
-                            initial={{ opacity: 0, y: -10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="text-red-400 text-sm"
-                        >
-                            {error}
-                        </motion.div>
-                    )}
-
-                    <div className="flex justify-end space-x-4">
-                        <button
-                            type="button"
-                            onClick={() => navigate(-1)}
-                            className="px-6 py-3 rounded-xl text-gray-400 hover:text-white transition-colors"
-                        >
-                            Cancel
-                        </button>
-                        <motion.button
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            type="submit"
-                            disabled={isLoading}
-                            className="px-6 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:shadow-lg hover:shadow-purple-500/20 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-900 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {isLoading ? (
-                                <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                            ) : (
-                                'Publish Story'
-                            )}
-                        </motion.button>
-                    </div>
-                </form>
-            </motion.div>
+              <ArrowLeft className="h-6 w-6" />
+            </button>
+            <div>
+              <h1 className="text-3xl font-bold text-white">Create New Story</h1>
+              <p className="text-gray-400">Share your creative vision with the world</p>
+            </div>
+          </div>
+          <BookOpen className="h-12 w-12 text-primary-400" />
         </div>
-    );
-};
 
-export default StoryCreate;
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Main Content */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Title */}
+              <div className="card">
+                <h2 className="text-xl font-semibold text-white mb-4">Story Details</h2>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Title *
+                    </label>
+                    <input
+                      {...register('title', {
+                        required: 'Title is required',
+                        minLength: {
+                          value: 3,
+                          message: 'Title must be at least 3 characters'
+                        },
+                        maxLength: {
+                          value: 200,
+                          message: 'Title must be less than 200 characters'
+                        }
+                      })}
+                      type="text"
+                      className="input"
+                      placeholder="Enter your story title"
+                    />
+                    {errors.title && (
+                      <p className="mt-1 text-sm text-red-400">{errors.title.message}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Description *
+                    </label>
+                    <textarea
+                      {...register('description', {
+                        required: 'Description is required',
+                        minLength: {
+                          value: 10,
+                          message: 'Description must be at least 10 characters'
+                        }
+                      })}
+                      rows={4}
+                      className="input resize-none"
+                      placeholder="Describe your story to attract readers..."
+                    />
+                    {errors.description && (
+                      <p className="mt-1 text-sm text-red-400">{errors.description.message}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Category
+                    </label>
+                    <select
+                      {...register('category')}
+                      className="input"
+                    >
+                      <option value="">Select a category</option>
+                      {categories.map(category => (
+                        <option key={category} value={category.toLowerCase()}>
+                          {category}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="card">
+                <h2 className="text-xl font-semibold text-white mb-4">Story Content</h2>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Initial Content *
+                  </label>
+                  <textarea
+                    {...register('content', {
+                      required: 'Story content is required',
+                      minLength: {
+                        value: 50,
+                        message: 'Content must be at least 50 characters'
+                      }
+                    })}
+                    rows={12}
+                    className="input resize-none font-serif"
+                    placeholder="Begin your story here... You can add chapters later."
+                  />
+                  {errors.content && (
+                    <p className="mt-1 text-sm text-red-400">{errors.content.message}</p>
+                  )}
+                  <p className="mt-2 text-sm text-gray-400">
+                    This will be the opening of your story. You can add more chapters after creation.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Sidebar */}
+            <div className="space-y-6">
+              {/* Cover Image */}
+              <div className="card">
+                <h2 className="text-xl font-semibold text-white mb-4">Cover Image</h2>
+                
+                {coverPreview ? (
+                  <div className="relative">
+                    <img
+                      src={coverPreview}
+                      alt="Cover preview"
+                      className="w-full h-48 object-cover rounded-lg"
+                    />
+                    <button
+                      type="button"
+                      onClick={removeCoverImage}
+                      className="absolute top-2 right-2 p-1 bg-red-600 text-white rounded-full hover:bg-red-700 transition-colors"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center">
+                    <Image className="h-12 w-12 text-gray-500 mx-auto mb-4" />
+                    <p className="text-gray-400 mb-4">Upload a cover image</p>
+                    <label className="btn-outline cursor-pointer inline-flex items-center space-x-2">
+                      <Upload className="h-4 w-4" />
+                      <span>Choose Image</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageChange}
+                        className="hidden"
+                      />
+                    </label>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Max size: 5MB. Recommended: 800x600px
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Publishing Options */}
+              <div className="card">
+                <h2 className="text-xl font-semibold text-white mb-4">Publishing</h2>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-300">Status</span>
+                    <span className="text-green-400">Published</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-300">Visibility</span>
+                    <span className="text-blue-400">Public</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="space-y-3">
+                <motion.button
+                  type="submit"
+                  disabled={isLoading || createMutation.isLoading}
+                  whileHover={{ scale: isLoading ? 1 : 1.02 }}
+                  whileTap={{ scale: isLoading ? 1 : 0.98 }}
+                  className="w-full btn-primary py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isLoading || createMutation.isLoading ? (
+                    <div className="flex items-center justify-center">
+                      <LoadingSpinner size="sm" className="mr-2" />
+                      Creating Story...
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center space-x-2">
+                      <Save className="h-4 w-4" />
+                      <span>Create Story</span>
+                    </div>
+                  )}
+                </motion.button>
+
+                <button
+                  type="button"
+                  onClick={() => navigate(-1)}
+                  className="w-full btn-outline py-3"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+export default StoryCreate
